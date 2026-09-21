@@ -443,23 +443,33 @@ export default function App() {
   };
 
   // ---- swipe deck ----
-  const dragState = useRef({ startX: 0, dx: 0, dragging: false });
+  const dragState = useRef({ startX: 0, startY: 0, dx: 0, dy: 0, dragging: false });
   const [dragX, setDragX] = useState(0);
 
   const onPointerDown = (e) => {
-    dragState.current = { startX: e.clientX, dx: 0, dragging: true };
+    dragState.current = { startX: e.clientX, startY: e.clientY, dx: 0, dy: 0, dragging: true };
   };
   const onPointerMove = (e) => {
     if (!dragState.current.dragging) return;
     const dx = e.clientX - dragState.current.startX;
+    const dy = e.clientY - dragState.current.startY;
     dragState.current.dx = dx;
-    setDragX(dx);
+    dragState.current.dy = dy;
+    // Only visually drag the card once the gesture is clearly horizontal —
+    // otherwise scrolling the synopsis text (or anywhere else vertically)
+    // would also nudge the card sideways.
+    if (Math.abs(dx) > Math.abs(dy)) setDragX(dx);
   };
   const endDrag = () => {
     if (!dragState.current.dragging) return;
-    const dx = dragState.current.dx;
+    const { dx, dy } = dragState.current;
     dragState.current.dragging = false;
-    if (Math.abs(dx) < 6) {
+    const isVerticalGesture = Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10;
+    if (isVerticalGesture) {
+      // A real scroll/vertical drag, however small the horizontal component —
+      // not a tap, not a horizontal swipe, so leave it alone and let the
+      // browser's native scroll of the synopsis text stand.
+    } else if (Math.abs(dx) < 6) {
       toggleFlip(index);
     } else if (dx < -60 && index < books.length - 1) {
       setIndex((i) => i + 1);
@@ -751,7 +761,7 @@ function DeckView({ books, index, setIndex, flipped, dragX, onPointerDown, onPoi
                   {book.author}
                 </p>
               )}
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto synopsis-scroll" style={{ touchAction: "pan-y" }}>
                 <p className="text-[#3A3428] text-[0.95rem] leading-relaxed" style={{ fontFamily: "Inter, sans-serif" }}>
                   {book.synopsis || "No synopsis yet for this one."}
                 </p>
