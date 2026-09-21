@@ -702,6 +702,15 @@ function DeckView({ books, index, setIndex, flipped, dragX, onPointerDown, onPoi
   const book = books[Math.min(index, books.length - 1)];
   const isFlipped = !!flipped[index];
   const atEnd = index === books.length - 1;
+  const synopsisRef = useRef(null);
+
+  // Every time the card flips to show the synopsis — same book or not —
+  // start the reader at the top rather than wherever they'd scrolled to last.
+  useEffect(() => {
+    if (isFlipped && synopsisRef.current) {
+      synopsisRef.current.scrollTop = 0;
+    }
+  }, [isFlipped, index]);
 
   return (
     <div className="h-full flex flex-col px-4 pt-2 pb-3">
@@ -761,7 +770,7 @@ function DeckView({ books, index, setIndex, flipped, dragX, onPointerDown, onPoi
                   {book.author}
                 </p>
               )}
-              <div className="flex-1 overflow-y-auto synopsis-scroll" style={{ touchAction: "pan-y" }}>
+              <div ref={synopsisRef} className="flex-1 overflow-y-auto synopsis-scroll" style={{ touchAction: "pan-y" }}>
                 <p className="text-[#3A3428] text-[0.95rem] leading-relaxed" style={{ fontFamily: "Inter, sans-serif" }}>
                   {book.synopsis || "No synopsis yet for this one."}
                 </p>
