@@ -27,6 +27,7 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowRight,
+  X,
   Layers,
   ListChecks,
   Pencil,
