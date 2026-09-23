@@ -21,12 +21,12 @@ import {
   Settings,
   BarChart3,
   Search,
-  Check,
   Loader2,
   Sparkles,
   Trash2,
   ArrowUp,
   ArrowDown,
+  ArrowRight,
   Layers,
   ListChecks,
   Pencil,
@@ -422,14 +422,30 @@ export default function App() {
     }
   };
 
-  const submitRanking = async () => {
-    if (!ranking.first) return;
+  const pickRanking = async (bookId, slot) => {
+    const next = { ...ranking };
+    if (slot === "first") {
+      if (next.first === bookId) {
+        next.first = null; // tapping your current 1st again clears it
+      } else {
+        if (next.second === bookId) next.second = null; // promote from 2nd
+        next.first = bookId;
+      }
+    } else {
+      if (next.second === bookId) {
+        next.second = null; // tapping your current 2nd again clears it
+      } else {
+        if (next.first === bookId) next.first = null; // demote from 1st
+        next.second = bookId;
+      }
+    }
+    setRanking(next); // instant UI feedback
     setSaving(true);
     try {
       await withTimeout(
         setDoc(
           doc(db, "votes", voterId),
-          { name, first: ranking.first, second: ranking.second, votedAt: serverTimestamp() },
+          { name, first: next.first, second: next.second, votedAt: serverTimestamp() },
           { merge: true }
         )
       );
@@ -440,6 +456,7 @@ export default function App() {
     } finally {
       setSaving(false);
     }
+  };
   };
 
   // ---- swipe deck ----
@@ -582,14 +599,7 @@ export default function App() {
               />
             )}
             {view === "rank" && (
-              <RankView
-                books={books}
-                ranking={ranking}
-                setRanking={setRanking}
-                onSubmit={submitRanking}
-                saving={saving}
-                hasVoted={!!votes[voterId]}
-              />
+              <RankView books={books} ranking={ranking} onPick={pickRanking} saving={saving} />
             )}
             {view === "results" && <ResultsView results={results} totalVoters={totalVoters} maxPoints={maxPoints} />}
             {view === "manage" && isEditor && (
@@ -824,23 +834,7 @@ function CoverImage({ book }) {
   );
 }
 
-function RankView({ books, ranking, setRanking, onSubmit, saving, hasVoted }) {
-  const pick = (id, slot) => {
-    setRanking((r) => {
-      const next = { ...r };
-      if (next.first === id) next.first = null;
-      if (next.second === id) next.second = null;
-      if (slot === "first") {
-        if (next.second === id) next.second = null;
-        next.first = id;
-      } else {
-        if (next.first === id) next.first = null;
-        next.second = id;
-      }
-      return next;
-    });
-  };
-
+function RankView({ books, ranking, onPick, saving }) {
   if (books.length === 0) {
     return (
       <div className="h-full flex items-center justify-center px-8 text-center">
@@ -853,11 +847,18 @@ function RankView({ books, ranking, setRanking, onSubmit, saving, hasVoted }) {
 
   return (
     <div className="h-full overflow-y-auto px-4 pt-3 pb-4">
-      <h2 className="text-[#F6F1E4] mb-1" style={{ fontFamily: "'Fraunces', serif", fontSize: "1.3rem" }}>
-        Rank your picks
-      </h2>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-[#F6F1E4]" style={{ fontFamily: "'Fraunces', serif", fontSize: "1.3rem" }}>
+          Rank your picks
+        </h2>
+        {saving && (
+          <span className="text-[#9FB0BE] text-xs flex items-center gap-1" style={{ fontFamily: "Inter, sans-serif" }}>
+            <Loader2 className="w-3 h-3 animate-spin" /> Saving
+          </span>
+        )}
+      </div>
       <p className="text-[#9FB0BE] text-xs mb-4" style={{ fontFamily: "Inter, sans-serif" }}>
-        Tap 1st for your favorite, 2nd for your runner-up.
+        Tap 1st for your favorite, 2nd for your runner-up — tap again to clear it. Saves automatically.
       </p>
 
       <div className="space-y-2.5">
@@ -886,7 +887,7 @@ function RankView({ books, ranking, setRanking, onSubmit, saving, hasVoted }) {
               </div>
               <div className="flex gap-1.5 flex-shrink-0">
                 <button
-                  onClick={() => pick(b.id, "first")}
+                  onClick={() => onPick(b.id, "first")}
                   className={`w-9 h-9 rounded-full text-xs font-bold flex items-center justify-center transition-colors ${
                     isFirst ? "bg-[#C9A227] text-[#16202B]" : "bg-[#233042] text-[#6B7C8C]"
                   }`}
@@ -894,7 +895,7 @@ function RankView({ books, ranking, setRanking, onSubmit, saving, hasVoted }) {
                   1st
                 </button>
                 <button
-                  onClick={() => pick(b.id, "second")}
+                  onClick={() => onPick(b.id, "second")}
                   className={`w-9 h-9 rounded-full text-xs font-bold flex items-center justify-center transition-colors ${
                     isSecond ? "bg-[#8B3A3A] text-[#F6F1E4]" : "bg-[#233042] text-[#6B7C8C]"
                   }`}
@@ -906,16 +907,6 @@ function RankView({ books, ranking, setRanking, onSubmit, saving, hasVoted }) {
           );
         })}
       </div>
-
-      <button
-        onClick={onSubmit}
-        disabled={!ranking.first || saving}
-        className="w-full mt-5 bg-[#C9A227] disabled:bg-[#3a3627] disabled:text-[#6B7C8C] text-[#16202B] font-semibold rounded-lg py-3 flex items-center justify-center gap-2"
-        style={{ fontFamily: "Inter, sans-serif" }}
-      >
-        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-        {hasVoted ? "Update my picks" : "Save my picks"}
-      </button>
     </div>
   );
 }
@@ -981,6 +972,7 @@ function ManageView({
   startEdit,
   cancelEdit,
 }) {
+  const [pendingDelete, setPendingDelete] = useState(null);
   return (
     <div className="h-full overflow-y-auto px-4 pt-3 pb-4" style={{ fontFamily: "Inter, sans-serif" }}>
       <h2 className="text-[#F6F1E4] mb-3" style={{ fontFamily: "'Fraunces', serif", fontSize: "1.3rem" }}>
@@ -1050,35 +1042,128 @@ function ManageView({
       </div>
 
       <p className="text-[#6B7C8C] text-xs mb-2 uppercase tracking-wide">{books.length} in the poll</p>
+      <p className="text-[#6B7C8C] text-xs mb-2 flex items-center gap-1">
+        <ArrowRight className="w-3 h-3" /> Swipe right from the left edge of a book to delete it
+      </p>
       <div className="space-y-2">
         {books.map((b, i) => (
-          <div
+          <SwipeableBookRow
             key={b.id}
-            className={`flex items-center gap-2.5 rounded-lg p-2 border ${
-              editingId === b.id ? "border-[#C9A227] bg-[#1F2E3D]" : "border-transparent bg-[#1a2733]"
-            }`}
-          >
-            <div className="relative rounded overflow-hidden bg-[#233042] flex-shrink-0" style={{ width: 32, height: 44 }}>
-              <CoverImage book={b} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[#F6F1E4] text-sm truncate">{b.title}</p>
-              <p className="text-[#6B7C8C] text-xs truncate">{b.author}</p>
-            </div>
-            <button onClick={() => startEdit(b)} className="text-[#9FB0BE] hover:text-[#C9A227] p-1">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => moveBook(b.id, "up")} disabled={i === 0} className="text-[#6B7C8C] disabled:opacity-20 p-1">
-              <ArrowUp className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => moveBook(b.id, "down")} disabled={i === books.length - 1} className="text-[#6B7C8C] disabled:opacity-20 p-1">
-              <ArrowDown className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => removeBook(b.id)} className="text-[#8B3A3A] p-1">
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
+            book={b}
+            isEditing={editingId === b.id}
+            onEdit={() => startEdit(b)}
+            onMoveUp={() => moveBook(b.id, "up")}
+            onMoveDown={() => moveBook(b.id, "down")}
+            canMoveUp={i > 0}
+            canMoveDown={i < books.length - 1}
+            onRequestDelete={() => setPendingDelete(b)}
+          />
         ))}
+      </div>
+
+      {pendingDelete && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center px-6 z-50"
+          onClick={() => setPendingDelete(null)}
+        >
+          <div
+            className="bg-[#1F2E3D] border border-[#33465A] rounded-xl p-5 max-w-xs w-full"
+            onClick={(e) => e.stopPropagation()}
+            style={{ fontFamily: "Inter, sans-serif" }}
+          >
+            <h3 className="text-[#F6F1E4] mb-1" style={{ fontFamily: "'Fraunces', serif", fontSize: "1.2rem" }}>
+              Remove this book?
+            </h3>
+            <p className="text-[#9FB0BE] text-sm mb-4">
+              "{pendingDelete.title}" will be removed from the poll, and cleared from anyone's saved picks. This can't be
+              undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPendingDelete(null)}
+                className="flex-1 border border-[#33465A] text-[#9FB0BE] rounded-lg py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  removeBook(pendingDelete.id);
+                  setPendingDelete(null);
+                }}
+                className="flex-1 bg-[#8B3A3A] text-[#F6F1E4] font-semibold rounded-lg py-2 text-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const EDGE_SWIPE_ZONE_PX = 36; // gesture must start within this many px of the screen's left edge
+const EDGE_SWIPE_THRESHOLD_PX = 70; // how far right it needs to travel to count as a delete swipe
+
+function SwipeableBookRow({ book, isEditing, onEdit, onMoveUp, onMoveDown, canMoveUp, canMoveDown, onRequestDelete }) {
+  const [dragX, setDragX] = useState(0);
+  const dragRef = useRef({ startX: 0, dragging: false });
+
+  const onPointerDown = (e) => {
+    // Only treat this as the delete gesture if it starts right at the edge of
+    // the screen — everywhere else on the row, taps on its buttons work normally.
+    if (e.clientX > EDGE_SWIPE_ZONE_PX) return;
+    dragRef.current = { startX: e.clientX, dragging: true };
+  };
+  const onPointerMove = (e) => {
+    if (!dragRef.current.dragging) return;
+    const dx = e.clientX - dragRef.current.startX;
+    if (dx > 0) setDragX(Math.min(dx, 120));
+  };
+  const endDrag = () => {
+    if (!dragRef.current.dragging) return;
+    dragRef.current.dragging = false;
+    if (dragX > EDGE_SWIPE_THRESHOLD_PX) onRequestDelete();
+    setDragX(0);
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-lg">
+      <div
+        className="absolute inset-0 flex items-center gap-2 px-4 bg-[#8B3A3A]"
+        style={{ opacity: Math.min(dragX / EDGE_SWIPE_THRESHOLD_PX, 1) }}
+      >
+        <Trash2 className="w-4 h-4 text-[#F6F1E4]" />
+        <span className="text-[#F6F1E4] text-xs">{dragX > EDGE_SWIPE_THRESHOLD_PX ? "Release to delete" : "Keep swiping…"}</span>
+      </div>
+      <div
+        className={`relative flex items-center gap-2.5 p-2 border ${isEditing ? "border-[#C9A227] bg-[#1F2E3D]" : "border-transparent bg-[#1a2733]"}`}
+        style={{ transform: `translateX(${dragX}px)`, transition: dragX === 0 ? "transform 0.2s ease" : "none" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onPointerLeave={endDrag}
+      >
+        <div className="relative rounded overflow-hidden bg-[#233042] flex-shrink-0" style={{ width: 32, height: 44 }}>
+          <CoverImage book={book} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[#F6F1E4] text-sm truncate">{book.title}</p>
+          <p className="text-[#6B7C8C] text-xs truncate">{book.author}</p>
+        </div>
+        <button onClick={onEdit} className="text-[#9FB0BE] hover:text-[#C9A227] p-1">
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={onMoveUp} disabled={!canMoveUp} className="text-[#6B7C8C] disabled:opacity-20 p-1">
+          <ArrowUp className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={onMoveDown} disabled={!canMoveDown} className="text-[#6B7C8C] disabled:opacity-20 p-1">
+          <ArrowDown className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={onRequestDelete} className="text-[#8B3A3A] p-1">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
   );
