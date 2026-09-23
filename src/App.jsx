@@ -457,7 +457,6 @@ export default function App() {
       setSaving(false);
     }
   };
-  };
 
   // ---- swipe deck ----
   const dragState = useRef({ startX: 0, startY: 0, dx: 0, dy: 0, dragging: false });
