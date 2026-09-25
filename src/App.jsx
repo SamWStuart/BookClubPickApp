@@ -31,6 +31,7 @@ import {
   Layers,
   ListChecks,
   Pencil,
+  RotateCcw,
 } from "lucide-react";
 
 // Change this before you share the link with your editor.
@@ -152,9 +153,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (votes[voterId]) {
-      setRanking({ first: votes[voterId].first ?? null, second: votes[voterId].second ?? null });
-    }
+    const v = votes[voterId];
+    setRanking({ first: v?.first ?? null, second: v?.second ?? null });
   }, [voterId, votes]);
 
   const saveName = (n) => {
@@ -423,6 +423,25 @@ export default function App() {
     }
   };
 
+  // Clears every vote so kept-over books start back at zero points next
+  // meeting — the book list itself is untouched.
+  const resetAllVotes = async () => {
+    const voterIds = Object.keys(votes);
+    if (voterIds.length === 0) return;
+    setSaving(true);
+    try {
+      const batch = writeBatch(db);
+      voterIds.forEach((vId) => batch.delete(doc(db, "votes", vId)));
+      await withTimeout(batch.commit());
+      setError("");
+    } catch (e) {
+      console.error(e);
+      setError(describeWriteError(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const pickRanking = async (bookId, slot) => {
     const next = { ...ranking };
     if (slot === "first") {
@@ -617,6 +636,8 @@ export default function App() {
                 editingId={editingId}
                 startEdit={startEdit}
                 cancelEdit={cancelEdit}
+                totalVoters={totalVoters}
+                resetAllVotes={resetAllVotes}
               />
             )}
           </>
@@ -824,6 +845,13 @@ function DeckView({ books, index, setIndex, flipped, dragX, onPointerDown, onPoi
 
 function CoverImage({ book }) {
   const [errored, setErrored] = useState(false);
+  // React reuses this same component instance as you swipe between books —
+  // without this, one book's failed cover load "sticks" and wrongly hides
+  // every other book's cover too. Resetting on URL change gives each cover
+  // its own clean slate.
+  useEffect(() => {
+    setErrored(false);
+  }, [book.coverUrl]);
   const hasImage = book.coverUrl && !errored;
   return hasImage ? (
     <img src={book.coverUrl} alt={book.title} className="absolute inset-0 w-full h-full object-cover" onError={() => setErrored(true)} draggable={false} />
@@ -971,13 +999,25 @@ function ManageView({
   editingId,
   startEdit,
   cancelEdit,
+  totalVoters,
+  resetAllVotes,
 }) {
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   return (
     <div className="h-full overflow-y-auto px-4 pt-3 pb-4" style={{ fontFamily: "Inter, sans-serif" }}>
-      <h2 className="text-[#F6F1E4] mb-3" style={{ fontFamily: "'Fraunces', serif", fontSize: "1.3rem" }}>
-        Manage the poll
-      </h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-[#F6F1E4]" style={{ fontFamily: "'Fraunces', serif", fontSize: "1.3rem" }}>
+          Manage the poll
+        </h2>
+        <button
+          onClick={() => setShowResetConfirm(true)}
+          disabled={totalVoters === 0}
+          className="flex items-center gap-1.5 text-xs text-[#9FB0BE] disabled:opacity-30 border border-[#33465A] rounded-full px-3 py-1.5 hover:border-[#8B3A3A] hover:text-[#e6b0a8] transition-colors"
+        >
+          <RotateCcw className="w-3 h-3" /> Reset votes
+        </button>
+      </div>
 
       <div className={`bg-[#1F2E3D] border rounded-xl p-4 mb-5 ${editingId ? "border-[#C9A227]" : "border-[#33465A]"}`}>
         {editingId && (
@@ -1093,6 +1133,45 @@ function ManageView({
                 className="flex-1 bg-[#8B3A3A] text-[#F6F1E4] font-semibold rounded-lg py-2 text-sm"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showResetConfirm && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center px-6 z-50"
+          onClick={() => setShowResetConfirm(false)}
+        >
+          <div
+            className="bg-[#1F2E3D] border border-[#33465A] rounded-xl p-5 max-w-xs w-full"
+            onClick={(e) => e.stopPropagation()}
+            style={{ fontFamily: "Inter, sans-serif" }}
+          >
+            <h3 className="text-[#F6F1E4] mb-1" style={{ fontFamily: "'Fraunces', serif", fontSize: "1.2rem" }}>
+              Reset all votes?
+            </h3>
+            <p className="text-[#9FB0BE] text-sm mb-4">
+              {totalVoters} {totalVoters === 1 ? "person's" : "people's"} picks will be cleared, so anyone still on the
+              list starts back at zero points. The book list itself isn't touched — nothing gets removed. This can't be
+              undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 border border-[#33465A] text-[#9FB0BE] rounded-lg py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  resetAllVotes();
+                  setShowResetConfirm(false);
+                }}
+                className="flex-1 bg-[#8B3A3A] text-[#F6F1E4] font-semibold rounded-lg py-2 text-sm"
+              >
+                Reset votes
               </button>
             </div>
           </div>
